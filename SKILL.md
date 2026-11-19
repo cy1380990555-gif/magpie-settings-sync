@@ -1,61 +1,35 @@
 ---
 name: magpie-settings-sync
-description: 同步 Magpie 跨设备设置时使用。用户要求同步主题、语言、托盘、模型隐藏、插件清单或排查同步冲突时使用。不要同步密钥、登录态、设备专属路径或窗口位置。
-description_zh: "同步 Magpie 跨设备设置时使用。用户要求同步主题、语言、托盘、模型隐藏、插件清单或排查同步冲突时使用。不要同步密钥、登录态、设备专属路径或窗口位置。"
-description_en: "Use when syncing Magpie settings across devices: theme, language, tray, hidden models, plugin list, or sync conflicts. Never sync credentials, logins, device paths, or window bounds."
+description: 当用户要求"更新 Magpie 配置""同步配置""把配置同步过来"时使用。一键从飞书拉取最新设置并应用到本机。不要同步密钥、登录态、设备专属路径或窗口位置。
+description_zh: "当用户要求更新或同步 Magpie 配置时使用。一键从飞书拉取最新设置并应用到本机。"
+description_en: "Use when the user asks to update or sync Magpie settings. Applies the latest config from Feishu in one step."
 ---
 
-# Magpie 设置同步
+# Magpie 配置同步
 
-## 何时使用
-- 用户说“同步 Magpie 设置”“换电脑插件和偏好保持一致”“另一台机器的主题/语言”。
-- 用户询问同步冲突、后端或同步范围。
+## 用户想更新配置时
+运行一条命令即可完成全部同步（拉取远端 + 上传本机变化 + 刷新飞书文档）：
 
-## 固定流程
-1. 脚本路径：`${CLAUDE_PLUGIN_ROOT}/scripts/sync.mjs`。
-2. 运行 `node <sync.mjs> status` 查看设备、后端、待同步项和冲突。
-3. 配置位于 `~/.config/magpie/plugin-work/magpie-settings-sync/config.json`。
-4. 执行 `node <sync.mjs> sync`，报告 applied / conflicts / files / uploaded。
-5. 有冲突时读取 `conflicts.json`，说明路径、两端设备与时间。
-6. 写回后提醒用户重启 Magpie：`settings.json` 与 `plugins.json` 在启动时读取。
-
-## 硬性约束
-- 不同步 `logins.json`、`providers.json`、`plugin-auth.json`、`plugin-providers.json`、`gateway.json`。
-- 不同步 `settings.json` 的 `window`、`windowAt`、`windowMaximised`、`otel`、`sessionReads`。
-- 不同步 `plugins.json` 中的绝对本地路径（如 `D:\magpie-plugins\tabbit`）；只同步 npm / GitHub 规格。
-- 同步失败不得清空或覆盖本地配置。
-
-## 常用命令
 ```bash
-node ${CLAUDE_PLUGIN_ROOT}/scripts/sync.mjs init --backend folder --folder "Z:\\sync\\magpie-settings"
-node ${CLAUDE_PLUGIN_ROOT}/scripts/sync.mjs init --backend feishu --folder-token "fldxxx" --device-name "home"
-node ${CLAUDE_PLUGIN_ROOT}/scripts/sync.mjs doctor
-node ${CLAUDE_PLUGIN_ROOT}/scripts/sync.mjs status
-node ${CLAUDE_PLUGIN_ROOT}/scripts/sync.mjs pull
-node ${CLAUDE_PLUGIN_ROOT}/scripts/sync.mjs push
-node ${CLAUDE_PLUGIN_ROOT}/scripts/sync.mjs sync
-node ${CLAUDE_PLUGIN_ROOT}/scripts/sync.mjs export
-node ${CLAUDE_PLUGIN_ROOT}/scripts/sync.mjs import --file "<从飞书文档复制保存的 json>"
-node ${CLAUDE_PLUGIN_ROOT}/scripts/sync.mjs lark-init --device-name "家里电脑"
-node ${CLAUDE_PLUGIN_ROOT}/scripts/sync.mjs init --backend lark --file-token "<fileToken>" --device-name "公司电脑"
-node ${CLAUDE_PLUGIN_ROOT}/scripts/sync.mjs version
-node ${CLAUDE_PLUGIN_ROOT}/scripts/sync.mjs update
+node "${CLAUDE_PLUGIN_ROOT}/scripts/sync.mjs" apply
 ```
 
-## 飞书自动同步（首选）
-`lark` 后端复用本机已授权的飞书 CLI，免 App ID/Secret。快照带全局 `version`，谁改配置谁 +1：`pull` 时远端版本更高则整份采用远端，`push` 时本地有变化才升版本上传。第一台用 `lark-init` 建文档并记下 `fileToken`，其他电脑用 `init --backend lark --file-token` 指向同一文档。
+命令会用中文直接告诉用户结果，例如"✅ 配置已同步 / 当前配置版本 v4 / 请重启 Magpie"。**运行后务必提醒用户重启 Magpie**，配置在启动时读取才会生效。
 
-## 版本号三处显示
-当前同步版本号会显示在三处，且保持一致：
-1. **Magpie 插件页面**：插件清单 `version` 写成 `1.0.<版本号>`，`description` 以 `[同步版本 vN]` 开头。
-2. **飞书文档标题**：`Magpie设置同步 vN`。
-3. **飞书文档正文**：顶部标题、版本、设备、时间、设置项数量。
+用户桌面上还有一个 `更新Magpie配置.cmd`，双击等同于上面的命令，面向不想用命令行的场景。
 
-每次 `pull` / `push` / `update` / `lark-init` 版本变化时自动刷新三处。
+## 查看状态（可选）
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/sync.mjs" version
+```
+显示当前版本、飞书版本、是否落后、文档链接。
 
-## 手动查看 / 手动更新
-- `version`：查看当前版本号、远端版本、是否落后、更新设备/时间、飞书文档链接。
-- `update`：检查远端，版本更高则拉取应用；随后把版本号同步到飞书标题与正文。
+## 首次绑定一台新电脑（管理员才需要做）
+这台电脑已绑定，无需重复。新电脑需要先安装插件并绑定同一份飞书文档（fileToken），之后才能用 `apply`。绑定后所有同步都自动完成，用户日常只需 `apply` 或双击桌面脚本。
 
-## 冲突策略
-`newer-wins`（默认）、`prefer-local`、`prefer-remote`、`manual`。首次接触以远端为准。
+## 同步范围
+- 同步：主题、语言、托盘、货币、字号、隐藏模型、插件清单等偏好设置。
+- 不同步：密钥、登录态、 providers/网关配置、设备专属路径、窗口位置。
+
+## 机制（背景，无需向用户解释）
+飞书文档作为中心快照，带全局版本号，谁改配置谁 +1，版本高者整份胜出。`hooks` 在会话开始自动拉取、结束自动推送（15 秒防抖，失败不阻塞）。冲突与细节记录在配置目录，常规使用无需关心。
