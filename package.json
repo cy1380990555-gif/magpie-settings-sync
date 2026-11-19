@@ -1,6 +1,6 @@
 {
   "name": "magpie-settings-sync",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Cross-device Magpie settings sync plugin via a Feishu document",
   "type": "module",
   "main": "./index.mjs",
