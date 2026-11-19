@@ -1,0 +1,62 @@
+{
+  "schema": 1,
+  "enabled": true,
+  "deviceId": "",
+  "deviceName": "",
+  "backend": "folder",
+  "conflictPolicy": "newer-wins",
+  "mirrorDeletes": false,
+  "auto": {
+    "pullOnSessionStart": true,
+    "pushOnStop": true,
+    "debounceSeconds": 15
+  },
+  "scope": {
+    "settings.json": [
+      ["theme"],
+      ["lang"],
+      ["tray"],
+      ["currency"],
+      ["textSize"],
+      ["keepAwake"],
+      ["quitNoAsk"],
+      ["updateEvery"],
+      ["groupSink"],
+      ["groupFirstToken"],
+      ["trayUsageEvery"],
+      ["trayNoLogos"],
+      ["trayNoNumber"],
+      ["trayPace"],
+      ["chinaMirror"],
+      ["hiddenModels"],
+      ["pluginCheckins"],
+      ["checkinAt"]
+    ],
+    "plugins.json": [["plugins"]]
+  },
+  "excludePatterns": [
+    "(?i)(token|secret|password|credential|apikey|api_key|authorization|cookie|privatekey|private_key|envelope|wbEncrypted|appsecret|webhook)"
+  ],
+  "folder": {
+    "path": "Z:\\sync\\magpie-settings",
+    "file": "magpie-snapshot.json"
+  },
+  "git": {
+    "repo": "git@github.com:you/magpie-settings.git",
+    "branch": "main",
+    "file": "magpie-snapshot.json"
+  },
+  "http": {
+    "getUrl": "https://example.com/api/magpie-settings",
+    "putUrl": "https://example.com/api/magpie-settings",
+    "tokenEnv": "MAGPIE_SYNC_TOKEN",
+    "file": "magpie-snapshot.json"
+  },
+  "feishu": {
+    "folderToken": "fldxxxxxxxxxxxxxxxx",
+    "fileName": "magpie-snapshot.json",
+    "tokenEnv": "MAGPIE_FEISHU_ACCESS_TOKEN",
+    "appIdEnv": "MAGPIE_FEISHU_APP_ID",
+    "appSecretEnv": "MAGPIE_FEISHU_APP_SECRET"
+  }
+}
