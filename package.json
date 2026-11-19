@@ -1,0 +1,23 @@
+{
+  "name": "magpie-settings-sync",
+  "version": "1.0.3",
+  "description": "Cross-device Magpie settings sync plugin via a Feishu document",
+  "type": "module",
+  "main": "./index.mjs",
+  "exports": {
+    ".": "./index.mjs"
+  },
+  "keywords": [
+    "magpie",
+    "magpie-plugin",
+    "settings",
+    "sync"
+  ],
+  "magpie": {
+    "label": "Settings Sync"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cy1380990555-gif/magpie-settings-sync.git"
+  }
+}
