@@ -9,6 +9,17 @@
 当前同步版本：**v3**
 <!-- SYNC-VERSION-END -->
 
+## 一键更新配置（最简单）
+
+把飞书上的最新配置同步到这台电脑，只需二选一：
+
+- **双击桌面的 `更新Magpie配置.cmd`**（推荐，不用记命令）
+- 或运行：`node scripts/sync.mjs apply`
+
+完成后会提示"配置已同步"，**重启 Magpie** 即可生效。
+
+---
+
 这是可被 Magpie 插件市场识别的 Claude Code 风格插件：`.claude-plugin/plugin.json` + Skill + Hooks。
 
 ## 同步范围
@@ -69,7 +80,7 @@ node "D:\magpie-plugins\magpie-settings-sync\scripts\sync.mjs" update
 
 | 位置 | 显示形式 |
 |---|---|
-| Magpie 插件页面 | 插件包版本 `version`（如 `1.0.4`，Magpie 原生显示并可更新），描述以 `[同步版本 vN]` 开头 |
+| Magpie 插件页面 | 插件 `version` = `1.0.<版本号>`，描述以 `[同步版本 vN]` 开头 |
 | 飞书文档标题 | `Magpie设置同步 vN` |
 | 飞书文档正文 | 顶部标题、版本、更新设备、更新时间、设置项数量 |
 
