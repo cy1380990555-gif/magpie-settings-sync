@@ -1173,6 +1173,60 @@ async function cmdUpdate(cfg, state) {
   });
 }
 
+// 一键更新：面向普通用户的单一入口。拉取飞书最新配置->有本机变化则上传->同步标题，全程大白话输出。
+async function cmdApply(cfg, state) {
+  if (!cfg) throw new Error(`尚未绑定同步文档。请先在这台电脑配置一次，或联系管理员。`);
+  const before = Number(state.version || 0);
+  const pull = await cmdPull(cfg, state);
+  let after = Number(state.version || 0);
+  let pushed = 0;
+
+  // 拉取后若本机存在未上传的改动，顺手上传，保证双向都同步。
+  const localHash = snapshotHash(buildSnapshot(cfg));
+  if (cfg.backend === 'lark' && state.appliedHash && state.appliedHash !== localHash) {
+    const push = await cmdPush(cfg, loadState());
+    pushed = push.uploaded ? 1 : 0;
+    after = Number(loadState().version || after);
+  }
+
+  stampPluginVersion(after);
+  if (cfg.backend === 'lark' && cfg.lark.fileToken) {
+    larkUpdateTitle(cfg, after);
+    const { snapshot: remote } = await loadRemote(cfg);
+    if (remote && typeof remote.version === 'number') {
+      larkCli(['markdown', '+overwrite', '--file-token', cfg.lark.fileToken, '--content', '-', '--format', 'json'], {
+        input: `${[
+          `# Magpie 设置同步 · 当前版本 v${Number(remote.version || 0)}`,
+          '',
+          `- 版本：v${Number(remote.version || 0)}`,
+          `- 更新设备：${remote.deviceName || '-'}`,
+          `- 更新时间：${remote.generatedAt || '-'}`,
+          `- 设置项：${Object.keys(remote.entries || {}).length}`,
+          '',
+          '> 下方为机器读取的快照数据，请勿改动。',
+          ''
+        ].join('\n')}${JSON.stringify(remote, null, 2)}\n`
+      });
+    }
+  }
+
+  const changed = after !== before || (pull.applied || 0) > 0;
+  const ver = `v${after}`;
+  console.log('');
+  console.log('  ✅ 配置已同步');
+  console.log(`     当前配置版本：${ver}`);
+  if (changed) {
+    console.log(`     ${(pull.applied || 0) > 0 ? '已从飞书更新本机配置' : '本机配置已上传并同步'}`);
+  } else {
+    console.log('     本机已是最新配置，无需改动');
+  }
+  console.log(`     飞书文档：${cfg.lark?.docUrl || '-'}`);
+  console.log('');
+  console.log('  ⚠ 请重启 Magpie，新配置才会生效');
+  console.log('');
+  return { applied: pull.applied || 0, pushed, version: after, changed };
+}
+
 function cmdStatus(cfg, state) {
   const larkMode = cfg.backend === 'lark';
   const localHash = larkMode ? snapshotHash(buildSnapshot(cfg)) : '';
@@ -1216,6 +1270,7 @@ async function main() {
 
   if (cmd === 'version') return cmdVersion(cfg, state);
   if (cmd === 'update') return cmdUpdate(cfg, state);
+  if (cmd === 'apply') return cmdApply(cfg, state);
   if (cmd === 'pull') return printSummary('pull', await cmdPull(cfg, state));
   if (cmd === 'push') return printSummary('push', await cmdPush(cfg, state));
   if (cmd === 'sync') {
