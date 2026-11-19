@@ -69,7 +69,7 @@ node "D:\magpie-plugins\magpie-settings-sync\scripts\sync.mjs" update
 
 | 位置 | 显示形式 |
 |---|---|
-| Magpie 插件页面 | 插件 `version` = `1.0.<版本号>`，描述以 `[同步版本 vN]` 开头 |
+| Magpie 插件页面 | 插件包版本 `version`（如 `1.0.4`，Magpie 原生显示并可更新），描述以 `[同步版本 vN]` 开头 |
 | 飞书文档标题 | `Magpie设置同步 vN` |
 | 飞书文档正文 | 顶部标题、版本、更新设备、更新时间、设置项数量 |
 
