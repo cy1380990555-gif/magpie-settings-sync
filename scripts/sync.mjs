@@ -19,8 +19,10 @@ const LOG_PATH = path.join(DATA_DIR, 'sync.log');
 const CONFLICT_PATH = path.join(DATA_DIR, 'conflicts.json');
 const SNAPSHOT_FILE = 'magpie-snapshot.json';
 // 内置同步文档：新设备装上插件后零配置，自动同步到同一份飞书文档。
-const BUILTIN_FILE_TOKEN = 'DbkPbGonToQiNUx37r0cQ75lnrp';
-const BUILTIN_DOC_URL = 'https://my-ichery.feishu.cn/file/DbkPbGonToQiNUx37r0cQ75lnrp';
+const BUILTIN_FILE_TOKEN = 'WDHPbZHvhoiQkwxF68PcjJ4GnGd';
+const BUILTIN_DOC_URL = 'https://my.feishu.cn/file/WDHPbZHvhoiQkwxF68PcjJ4GnGd';
+// 旧版本内置的曹勇账号文档；升级后自动迁移到 Space 账号文档。
+const LEGACY_FILE_TOKENS = ['DbkPbGonToQiNUx37r0cQ75lnrp'];
 const FILES = {
   'settings.json': path.join(MAGPIE_HOME, 'settings.json'),
   'plugins.json': path.join(MAGPIE_HOME, 'plugins.json')
@@ -230,10 +232,17 @@ function loadConfig() {
     return cfg;
   }
   const cfg = deepMerge(DEFAULT_CONFIG, readJson(CONFIG_PATH));
+  let changed = false;
   if (!cfg.deviceId) {
     cfg.deviceId = crypto.randomUUID();
-    writeJsonAtomic(CONFIG_PATH, cfg);
+    changed = true;
   }
+  if (LEGACY_FILE_TOKENS.includes(cfg.lark?.fileToken)) {
+    cfg.lark.fileToken = BUILTIN_FILE_TOKEN;
+    cfg.lark.docUrl = BUILTIN_DOC_URL;
+    changed = true;
+  }
+  if (changed) writeJsonAtomic(CONFIG_PATH, cfg);
   return cfg;
 }
 
