@@ -1,12 +1,12 @@
 # Magpie 设置同步插件（Magpie 原生）
 
-> ## 当前同步版本：v9
-> 更新时间：2026-11-20 · 更新设备：本机-home · 飞书文档：`Magpie设置同步 v9`
+> ## 当前同步版本：v12
+> 更新时间：2026-11-20 · 更新设备：本机-home · 飞书文档：`Magpie设置同步 v12`
 >
 > 版本号随合并上传自动 +1。打开 Magpie 时自动把本机配置与云端配置合并成 C，并同步到两边。
 
 <!-- SYNC-VERSION-BEGIN -->
-当前同步版本：**v9**
+当前同步版本：**v12**
 <!-- SYNC-VERSION-END -->
 
 ## 日常使用（无需命令、无需桌面脚本）
@@ -32,8 +32,15 @@
 |---|---|
 | `~/.config/magpie/settings.json` | `theme`、`lang`、`tray`、`currency`、`textSize`、`keepAwake`、`quitNoAsk`、`updateEvery`、`groupSink`、`groupFirstToken`、`trayUsageEvery`、`trayNoLogos`、`trayNoNumber`、`trayPace`、`chinaMirror`、`hiddenModels`、`pluginCheckins`、`checkinAt` |
 | `~/.config/magpie/plugins.json` | `plugins[].spec`，仅 npm / GitHub 规格；绝对本地路径（如 `D:\magpie-plugins\tabbit`）不上送，拉取时会保留在本机 |
+| `~/.config/magpie/providers.json` | `providers`（按 id 逐项同步，含 API Key 明文）、`groups`（路由组，按 id 逐项同步）、`noAutoGroups` |
+| `~/.config/magpie/gateway.json` | `addr`、`serves`、`version`；不同步 `pid`、`started` 等机器相关动态值 |
+| `~/.config/magpie/quotas.json` | 全部配额项（顶层键为动态账号名，逐项同步） |
 
-不同步：`logins.json`、`providers.json`、`plugin-auth.json`、`plugin-providers.json`、`gateway.json`、`settings.json` 的 `window`/`windowAt`/`otel`/`sessionReads`、密钥与登录态。
+供应商与路由组按 id 合并：A 电脑的供应商会和 B 电脑的取并集，同一 id 两边都改过时按最后修改时间取较新值。
+
+不同步：`logins.json`、`plugin-auth.json`、`plugin-providers.json`、`settings.json` 的 `window`/`windowAt`/`otel`/`sessionReads`、登录态。
+
+> 注意：按你的选择，`providers.json` 的 API Key（`sk-...`）会以明文写入飞书同步文档。任何能打开该文档的人都能看到这些密钥，请知悉。
 
 ## 读写与冲突
 

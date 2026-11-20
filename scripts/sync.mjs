@@ -25,7 +25,10 @@ const BUILTIN_DOC_URL = 'https://my.feishu.cn/file/WDHPbZHvhoiQkwxF68PcjJ4GnGd';
 const LEGACY_FILE_TOKENS = ['DbkPbGonToQiNUx37r0cQ75lnrp'];
 const FILES = {
   'settings.json': path.join(MAGPIE_HOME, 'settings.json'),
-  'plugins.json': path.join(MAGPIE_HOME, 'plugins.json')
+  'plugins.json': path.join(MAGPIE_HOME, 'plugins.json'),
+  'providers.json': path.join(MAGPIE_HOME, 'providers.json'),
+  'gateway.json': path.join(MAGPIE_HOME, 'gateway.json'),
+  'quotas.json': path.join(MAGPIE_HOME, 'quotas.json')
 };
 
 const DEFAULT_CONFIG = {
@@ -58,7 +61,14 @@ const DEFAULT_CONFIG = {
       ['pluginCheckins'],
       ['checkinAt']
     ],
-    'plugins.json': [['plugins']]
+    'plugins.json': [['plugins']],
+    // 供应商与路由组按 id 拆成独立条目，实现两台电脑的并集合并。
+    // 末尾 @byId 是内部标记：展开数组时以元素 id 作为条目路径。
+    'providers.json': [['providers', '@byId'], ['groups', '@byId'], ['noAutoGroups']],
+    // 网关只同步可移植字段，排除 pid/started 等机器相关动态值。
+    'gateway.json': [['addr'], ['serves'], ['version']],
+    // 配额文件的顶层键是动态的（如供应商账号名），$self 表示整体展开。
+    'quotas.json': [['$self']]
   },
   excludePatterns: [
     '(?i)(token|secret|password|credential|apikey|api_key|authorization|cookie|privatekey|private_key|envelope|wbEncrypted|appsecret|webhook)'
@@ -238,13 +248,20 @@ function loadConfig() {
     changed = true;
   }
   // 旧设备可能是 folder/git 后端或空 fileToken，自动切换到内置飞书文档。
-  if (cfg.backend !== 'lark' || !cfg.lark?.fileToken || LEGACY_FILE_TOKENS.includes(cfg.lark?.fileToken)) {
+  // 测试模式下跳过迁移，便于用 folder 后端做隔离验证。
+  const testMode = !!process.env.MAGPIE_SYNC_TEST_MODE;
+  if (!testMode && (cfg.backend !== 'lark' || !cfg.lark?.fileToken || LEGACY_FILE_TOKENS.includes(cfg.lark?.fileToken))) {
     cfg.backend = 'lark';
     cfg.lark = cfg.lark || {};
     cfg.lark.fileToken = BUILTIN_FILE_TOKEN;
     cfg.lark.docUrl = BUILTIN_DOC_URL;
     cfg.lark.fileName = cfg.lark.fileName || 'Magpie设置同步.md';
     changed = true;
+  }
+  // 新版新增了 providers/gateway/quotas 同步范围，旧配置自动补齐。
+  cfg.scope = cfg.scope || {};
+  for (const [file, paths] of Object.entries(DEFAULT_CONFIG.scope)) {
+    if (!cfg.scope[file]) { cfg.scope[file] = clone(paths); changed = true; }
   }
   if (changed) writeJsonAtomic(CONFIG_PATH, cfg);
   return cfg;
@@ -302,17 +319,22 @@ function looksSecretString(s) {
   return /-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(s) || /^(sk-|ghp_|github_pat_|xox[baprs]-)/i.test(s);
 }
 
-function sanitize(value, cfg, key = '') {
+function sanitize(value, cfg, key = '', opts = {}) {
   if (key && isExcludedKey(key, cfg)) return undefined;
-  if (typeof value === 'string') return looksSecretString(value) ? undefined : value;
+  // 用户选择「连 API Key 一起同步」：providers.json 的 provider.key 需要保留明文。
+  // 仅在明确允许密钥的路径下跳过 sk- 等密钥识别，其他文件仍然严格脱敏。
+  if (typeof value === 'string') {
+    if (opts.allowSecret) return value;
+    return looksSecretString(value) ? undefined : value;
+  }
   if (Array.isArray(value)) {
-    return value.map((v) => sanitize(v, cfg)).filter((v) => v !== undefined);
+    return value.map((v) => sanitize(v, cfg, '', opts)).filter((v) => v !== undefined);
   }
   if (isObj(value)) {
     const out = {};
     for (const [k, v] of Object.entries(value)) {
       if (isExcludedKey(k, cfg)) continue;
-      const clean = sanitize(v, cfg, k);
+      const clean = sanitize(v, cfg, k, opts);
       if (clean !== undefined) out[k] = clean;
     }
     return out;
@@ -377,6 +399,28 @@ function buildSnapshot(cfg) {
     for (const rawPath of cfg.scope[label] || []) {
       const segs = normalizeSegments(rawPath);
       if (!segs.length) continue;
+      const marker = segs[segs.length - 1];
+      if (marker === '@byId') {
+        // 数组按元素 id 拆成独立条目，父路径使用占位索引 0；写回时再由 applyEntries 按 id 合并。
+        const base = segs.slice(0, -1);
+        const arr = getPath(doc, base);
+        if (!Array.isArray(arr)) continue;
+        for (const item of arr) {
+          if (!isObj(item)) continue;
+          const id = item.id ?? item.name;
+          if (!id) continue;
+          // 供应商 key 允许明文（用户选择同步密钥），其它字段照常脱敏。
+          const clean = sanitize(item, cfg, '', { allowSecret: label === 'providers.json' });
+          if (clean === undefined) continue;
+          entries[entryKey(label, [...base, '*', String(id)])] = { value: clean, ...meta };
+        }
+        continue;
+      }
+      if (marker === '$self') {
+        // 顶层键是动态的（如配额文件以账号名为键）：整体展开，动态键原样保留。
+        flatten(label, segs.slice(0, -1), doc, entries, cfg, meta);
+        continue;
+      }
       const value = getPath(doc, segs);
       if (value === undefined) continue;
       flatten(label, segs, value, entries, cfg, meta);
@@ -498,7 +542,21 @@ function applyEntries(cfg, entries, state) {
         });
       next = [...next, ...localOnly];
     }
-    if (hashValue(current) !== hashValue(next)) {
+    // @byId 条目形如 ['providers', '*', '<id>']：在数组中按 id 定位，替换或追加。
+    const starIdx = parsed.segs.indexOf('*');
+    if (starIdx >= 0 && Array.isArray(getPath(docs[parsed.file], parsed.segs.slice(0, starIdx)))) {
+      const arrPath = parsed.segs.slice(0, starIdx);
+      const id = parsed.segs[parsed.segs.length - 1];
+      const arr = getPath(docs[parsed.file], arrPath);
+      const idx = arr.findIndex((x) => isObj(x) && (x.id ?? x.name) === id);
+      const cleanNext = isObj(next) ? { ...next, id } : next;
+      if (idx >= 0) {
+        if (hashValue(arr[idx]) !== hashValue(cleanNext)) { arr[idx] = cleanNext; dirty.add(parsed.file); }
+      } else {
+        arr.push(cleanNext);
+        dirty.add(parsed.file);
+      }
+    } else if (hashValue(current) !== hashValue(next)) {
       setPath(docs[parsed.file], parsed.segs, next);
       dirty.add(parsed.file);
     }
