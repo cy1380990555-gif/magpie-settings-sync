@@ -237,9 +237,13 @@ function loadConfig() {
     cfg.deviceId = crypto.randomUUID();
     changed = true;
   }
-  if (LEGACY_FILE_TOKENS.includes(cfg.lark?.fileToken)) {
+  // 旧设备可能是 folder/git 后端或空 fileToken，自动切换到内置飞书文档。
+  if (cfg.backend !== 'lark' || !cfg.lark?.fileToken || LEGACY_FILE_TOKENS.includes(cfg.lark?.fileToken)) {
+    cfg.backend = 'lark';
+    cfg.lark = cfg.lark || {};
     cfg.lark.fileToken = BUILTIN_FILE_TOKEN;
     cfg.lark.docUrl = BUILTIN_DOC_URL;
+    cfg.lark.fileName = cfg.lark.fileName || 'Magpie设置同步.md';
     changed = true;
   }
   if (changed) writeJsonAtomic(CONFIG_PATH, cfg);
