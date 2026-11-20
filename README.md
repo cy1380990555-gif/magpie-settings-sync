@@ -34,7 +34,7 @@
 | `~/.config/magpie/plugins.json` | `plugins[].spec`，仅 npm / GitHub 规格；绝对本地路径（如 `D:\magpie-plugins\tabbit`）不上送，拉取时会保留在本机 |
 | `~/.config/magpie/providers.json` | `providers`（按 id 逐项同步，含 API Key 明文）、`groups`（路由组，按 id 逐项同步）、`noAutoGroups` |
 | `~/.config/magpie/gateway.json` | `addr`、`serves`、`version`；不同步 `pid`、`started` 等机器相关动态值 |
-| `~/.config/magpie/quotas.json` | 全部配额项（顶层键为动态账号名，逐项同步） |
+| `~/.config/magpie/quotas.json` | 全部配额项（顶层键为动态账号名，逐项同步）；用量数值 `used`/`display`/`amount`/`limit` 同步，`at`/`readAt`/`resetsAt`/`resetSecs` 等抓取时刻字段忽略（避免启动升版） |
 
 供应商与路由组按 id 合并：A 电脑的供应商会和 B 电脑的取并集，同一 id 两边都改过时按最后修改时间取较新值。
 

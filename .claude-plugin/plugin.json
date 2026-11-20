@@ -1,6 +1,6 @@
 {
   "name": "magpie-settings-sync",
-  "version": "1.0.12",
+  "version": "1.0.13",
   "description": "[同步版本 v12] 跨设备同步 Magpie 设置与可移植插件清单；支持 git / 共享目录 / HTTP 后端，按路径合并并记录冲突。",
   "author": {
     "name": "Local"

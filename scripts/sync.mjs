@@ -334,6 +334,7 @@ function sanitize(value, cfg, key = '', opts = {}) {
     const out = {};
     for (const [k, v] of Object.entries(value)) {
       if (isExcludedKey(k, cfg)) continue;
+      if (opts.file === 'quotas.json' && QUOTA_VOLATILE_KEYS.has(k)) continue;
       const clean = sanitize(v, cfg, k, opts);
       if (clean !== undefined) out[k] = clean;
     }
@@ -366,6 +367,10 @@ function readableKey(key) {
   return d ? `${d.file}:${d.segs.join('.')}` : key;
 }
 
+// 配额抓取时刻/倒计时字段：每次启动 Magpie 都会刷新，跨机同步只会制造无意义的版本升级。
+// 用量数值（used/display/amount/limit）仍同步，仅忽略时间类动态字段。
+const QUOTA_VOLATILE_KEYS = new Set(['at', 'readAt', 'resetsAt', 'resetSecs']);
+
 function flatten(file, segs, value, out, cfg, meta) {
   // Magpie plugin specs: keep portable npm/GitHub specs, drop absolute local paths.
   if (file === 'plugins.json' && segs.length === 1 && segs[0] === 'plugins' && Array.isArray(value)) {
@@ -378,11 +383,14 @@ function flatten(file, segs, value, out, cfg, meta) {
   if (isObj(value)) {
     for (const [k, v] of Object.entries(value)) {
       if (isExcludedKey(k, cfg)) continue;
+      if (file === 'quotas.json' && QUOTA_VOLATILE_KEYS.has(k)) continue;
       flatten(file, [...segs, k], v, out, cfg, meta);
     }
     return;
   }
-  const clean = sanitize(value, cfg, segs[segs.length - 1]);
+  const leafKey = segs[segs.length - 1];
+  if (file === 'quotas.json' && QUOTA_VOLATILE_KEYS.has(leafKey)) return;
+  const clean = sanitize(value, cfg, leafKey, { file });
   if (clean === undefined) return;
   out[entryKey(file, segs)] = { value: clean, ...meta };
 }
@@ -451,6 +459,9 @@ function mergeSnapshots(local, remote, state, cfg) {
   let adopted = 0;
   const keys = new Set([...Object.keys(local?.entries || {}), ...Object.keys(remote?.entries || {})]);
   for (const key of keys) {
+    // 忽略配额的旧动态字段条目（历史云端快照可能仍带时间戳），防止每次启动反复触发升版。
+    const parsedKey = decodeKey(key);
+    if (parsedKey?.file === 'quotas.json' && QUOTA_VOLATILE_KEYS.has(parsedKey.segs[parsedKey.segs.length - 1])) continue;
     const L = local?.entries?.[key];
     const R = remote?.entries?.[key];
     if (!R) { if (L) entries[key] = L; continue; }
