@@ -18,6 +18,9 @@ const STATE_PATH = path.join(DATA_DIR, 'state.json');
 const LOG_PATH = path.join(DATA_DIR, 'sync.log');
 const CONFLICT_PATH = path.join(DATA_DIR, 'conflicts.json');
 const SNAPSHOT_FILE = 'magpie-snapshot.json';
+// 内置同步文档：新设备装上插件后零配置，自动同步到同一份飞书文档。
+const BUILTIN_FILE_TOKEN = 'DbkPbGonToQiNUx37r0cQ75lnrp';
+const BUILTIN_DOC_URL = 'https://my-ichery.feishu.cn/file/DbkPbGonToQiNUx37r0cQ75lnrp';
 const FILES = {
   'settings.json': path.join(MAGPIE_HOME, 'settings.json'),
   'plugins.json': path.join(MAGPIE_HOME, 'plugins.json')
@@ -214,7 +217,18 @@ function appendLog(line) {
 }
 
 function loadConfig() {
-  if (!fs.existsSync(CONFIG_PATH)) return null;
+  if (!fs.existsSync(CONFIG_PATH)) {
+    // 新设备首次运行：自动用内置文档初始化，免去手动绑定。
+    const cfg = clone(DEFAULT_CONFIG);
+    cfg.deviceId = crypto.randomUUID();
+    cfg.backend = 'lark';
+    cfg.conflictPolicy = 'higher-version-wins';
+    cfg.lark.fileToken = BUILTIN_FILE_TOKEN;
+    cfg.lark.docUrl = BUILTIN_DOC_URL;
+    cfg.lark.fileName = 'Magpie设置同步.md';
+    writeJsonAtomic(CONFIG_PATH, cfg);
+    return cfg;
+  }
   const cfg = deepMerge(DEFAULT_CONFIG, readJson(CONFIG_PATH));
   if (!cfg.deviceId) {
     cfg.deviceId = crypto.randomUUID();
@@ -1173,21 +1187,13 @@ async function cmdUpdate(cfg, state) {
   });
 }
 
-// 一键更新：面向普通用户的单一入口。拉取飞书最新配置->有本机变化则上传->同步标题，全程大白话输出。
+// 一键更新：面向普通用户的单一入口。只做一件事——把飞书最新配置拉到本地 Magpie。
+// 上传由关闭 Magpie 时的 hook 自动完成；这里绝不上传，避免反复升版/污染远端。
 async function cmdApply(cfg, state) {
   if (!cfg) throw new Error(`尚未绑定同步文档。请先在这台电脑配置一次，或联系管理员。`);
   const before = Number(state.version || 0);
   const pull = await cmdPull(cfg, state);
-  let after = Number(state.version || 0);
-  let pushed = 0;
-
-  // 拉取后若本机存在未上传的改动，顺手上传，保证双向都同步。
-  const localHash = snapshotHash(buildSnapshot(cfg));
-  if (cfg.backend === 'lark' && state.appliedHash && state.appliedHash !== localHash) {
-    const push = await cmdPush(cfg, loadState());
-    pushed = push.uploaded ? 1 : 0;
-    after = Number(loadState().version || after);
-  }
+  const after = Number(state.version || 0);
 
   stampPluginVersion(after);
   if (cfg.backend === 'lark' && cfg.lark.fileToken) {
@@ -1215,16 +1221,17 @@ async function cmdApply(cfg, state) {
   console.log('');
   console.log('  ✅ 配置已同步');
   console.log(`     当前配置版本：${ver}`);
-  if (changed) {
-    console.log(`     ${(pull.applied || 0) > 0 ? '已从飞书更新本机配置' : '本机配置已上传并同步'}`);
+  if ((pull.applied || 0) > 0) {
+    console.log('     已从飞书更新本机配置');
+  } else if (changed) {
+    console.log('     已同步到最新配置');
   } else {
     console.log('     本机已是最新配置，无需改动');
   }
-  console.log(`     飞书文档：${cfg.lark?.docUrl || '-'}`);
   console.log('');
   console.log('  ⚠ 请重启 Magpie，新配置才会生效');
   console.log('');
-  return { applied: pull.applied || 0, pushed, version: after, changed };
+  return { applied: pull.applied || 0, version: after, changed };
 }
 
 function cmdStatus(cfg, state) {
