@@ -417,8 +417,24 @@ function mergeSnapshots(local, remote, state, cfg) {
     let resolution = 'local';
 
     if (!baseHash) {
-      // First contact for this path: adopt remote to protect already shared state.
-      winner = R; resolution = 'remote-adopt'; adopted += 1;
+      // 首次接触没有共同基线：按最后修改时间合并，让两台电脑的本地配置能合成 C。
+      if (cfg.conflictPolicy === 'newer-wins') {
+        const lt = Date.parse(L.updatedAt || '') || 0;
+        const rt = Date.parse(R.updatedAt || '') || 0;
+        winner = rt > lt ? R : L;
+        resolution = winner === R ? 'remote-newer' : 'local-newer';
+        conflicts.push({
+          key,
+          readablePath: readableKey(key),
+          at: nowIso(),
+          policy: 'newer-wins',
+          resolution,
+          local: { hash: lh, updatedAt: L.updatedAt, deviceId: L.deviceId },
+          remote: { hash: rh, updatedAt: R.updatedAt, deviceId: R.deviceId }
+        });
+      } else {
+        winner = R; resolution = 'remote-adopt'; adopted += 1;
+      }
     } else if (baseHash === lh) {
       winner = R; resolution = 'remote'; // local untouched since last sync
     } else if (baseHash === rh) {
@@ -1243,6 +1259,89 @@ async function cmdApply(cfg, state) {
   return { applied: pull.applied || 0, version: after, changed };
 }
 
+// 登录时自动合并：把本机配置与云端配置按路径合并成 C，必要时升版并上传。
+// 与 apply（只拉）不同：merge 会在首次登录/本机有新增配置时把合并结果写回云端，
+// 从而让 A1 + B1 -> C，且之后两边都收敛到 C。
+async function cmdMerge(cfg, state) {
+  if (!cfg) throw new Error(`尚未绑定同步文档。请先在这台电脑配置一次，或联系管理员。`);
+  const problems = validateConfig(cfg);
+  if (problems.length) throw new Error(problems.join('; '));
+
+  const local = buildSnapshot(cfg);
+  const { snapshot: remote, meta } = await loadRemote(cfg);
+  const lv = Number(state.version || 0);
+  const rv = Number(remote?.version || 0);
+
+  // lark 后端平时是整份高版本覆盖；合并场景显式改用逐路径 newer-wins 三向合并。
+  const mergeCfg = cfg.backend === 'lark' ? { ...cfg, conflictPolicy: 'newer-wins' } : cfg;
+  const mergedResult = remote
+    ? mergeSnapshots(local, remote, state, mergeCfg)
+    : { entries: clone(local.entries || {}), conflicts: [], applied: 0, kept: 0, adopted: 0 };
+
+  const merged = {
+    ...local,
+    generatedAt: nowIso(),
+    deviceId: cfg.deviceId,
+    deviceName: cfg.deviceName,
+    entries: mergedResult.entries
+  };
+  const mergedHash = snapshotHash(merged);
+  const remoteHash = remote ? snapshotHash(remote) : null;
+  const changed = mergedHash !== remoteHash;
+  const version = remote
+    ? (changed ? Math.max(rv, lv) + 1 : Math.max(rv, lv))
+    : Math.max(1, lv);
+  merged.version = version;
+
+  const files = applyEntries(cfg, merged.entries, state);
+  if (changed) await uploadRemote(cfg, merged, meta, state);
+
+  state.version = version;
+  state.appliedHash = mergedHash;
+  state.lastRemoteHash = mergedHash;
+  state.lastPullAt = nowIso();
+  if (changed) state.lastPushAt = nowIso();
+  state.lastPushedHash = mergedHash;
+  writeState(state);
+  writeConflicts(mergedResult.conflicts);
+  stampPluginVersion(version);
+
+  // 只在内容未变但版本号需要对齐时重写文档表头，避免重复写盘。
+  if (cfg.backend === 'lark' && cfg.lark.fileToken && !changed && version !== rv) {
+    larkCli(['markdown', '+overwrite', '--file-token', cfg.lark.fileToken, '--content', '-', '--format', 'json'], {
+      input: `${[
+        `# Magpie 设置同步 · 当前版本 v${version}`,
+        '',
+        `- 版本：v${version}`,
+        `- 更新设备：${merged.deviceName || '-'}`,
+        `- 更新时间：${merged.generatedAt || '-'}`,
+        `- 设置项：${Object.keys(merged.entries || {}).length}`,
+        '',
+        '> 下方为机器读取的快照数据，请勿改动。',
+        ''
+      ].join('\n')}${JSON.stringify(merged, null, 2)}\n`,
+      loose: true
+    });
+    larkUpdateTitle(cfg, version);
+  }
+
+  appendLog(`merge[version] remote=${rv} local=${lv} -> v${version} changed=${changed} applied=${mergedResult.applied} conflicts=${mergedResult.conflicts.length} files=${files.join(',')}`);
+
+  console.log('');
+  console.log('  ✅ 配置已合并同步');
+  console.log(`     当前配置版本：v${version}`);
+  if (changed) console.log('     已把本机与云端配置合并并上传');
+  if (files.length) console.log(`     已更新本机配置：${files.join(', ')}`);
+  if (mergedResult.conflicts.length) {
+    console.log(`     同一配置项两边都改过：${mergedResult.conflicts.length} 项，按最后修改时间取较新值`);
+  }
+  if (!changed && !files.length) console.log('     本机与云端已经一致');
+  console.log('');
+  console.log('  ⚠ 请重启 Magpie，新配置才会生效');
+  console.log('');
+  return { version, changed, applied: mergedResult.applied, conflicts: mergedResult.conflicts.length, files };
+}
+
 function cmdStatus(cfg, state) {
   const larkMode = cfg.backend === 'lark';
   const localHash = larkMode ? snapshotHash(buildSnapshot(cfg)) : '';
@@ -1287,6 +1386,7 @@ async function main() {
   if (cmd === 'version') return cmdVersion(cfg, state);
   if (cmd === 'update') return cmdUpdate(cfg, state);
   if (cmd === 'apply') return cmdApply(cfg, state);
+  if (cmd === 'merge') return cmdMerge(cfg, state);
   if (cmd === 'pull') return printSummary('pull', await cmdPull(cfg, state));
   if (cmd === 'push') return printSummary('push', await cmdPush(cfg, state));
   if (cmd === 'sync') {

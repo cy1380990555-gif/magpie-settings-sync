@@ -2,8 +2,9 @@
  * Magpie plugin entry for magpie-settings-sync.
  *
  * Magpie calls the `config` hook every time it starts and loads plugins.
- * We use that moment to kick off a background settings sync: pull the newest
- * snapshot from Feishu and write it into this computer's Magpie settings.
+ * We use that moment to kick off a background settings merge: combine this
+ * computer's Magpie settings with the shared snapshot in Feishu, write the
+ * merged result back to both sides, then write it into local Magpie settings.
  *
  * The work itself lives in scripts/sync.mjs. We spawn it detached so the hook
  * returns immediately and never blocks Magpie's startup (Magpie puts a time
@@ -34,8 +35,8 @@ function kickSync() {
   } catch { /* no lock yet */ }
   try { fs.writeFileSync(LOCK, String(Date.now()), 'utf8'); } catch { /* ignore */ }
 
-  log('config hook fired -> launching background apply');
-  const child = spawn(NODE, [SYNC, 'apply'], {
+  log('config hook fired -> launching background merge');
+  const child = spawn(NODE, [SYNC, 'merge'], {
     detached: true,
     stdio: 'ignore',
     env: { ...process.env },

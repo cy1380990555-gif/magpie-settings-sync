@@ -1,22 +1,26 @@
 # Magpie 设置同步插件（Magpie 原生）
 
-> ## 当前同步版本：v7
-> 更新时间：2026-11-20 · 更新设备：本机-home · 飞书文档：`Magpie设置同步 v7`
+> ## 当前同步版本：v8
+> 更新时间：2026-11-20 · 更新设备：本机-home · 飞书文档：`Magpie设置同步 v8`
 >
-> 版本号随每次配置变化自动 +1，哪台电脑版本高可用哪台。用 `version` 查看、`update` 手动更新。
+> 版本号随合并上传自动 +1。打开 Magpie 时自动把本机配置与云端配置合并成 C，并同步到两边。
 
 <!-- SYNC-VERSION-BEGIN -->
-当前同步版本：**v7**
+当前同步版本：**v8**
 <!-- SYNC-VERSION-END -->
 
-## 一键更新配置（最简单）
+## 日常使用（无需命令、无需桌面脚本）
 
-把飞书上的最新配置同步到这台电脑，只需二选一：
+安装插件后，只要打开 Magpie：
 
-- **双击桌面的 `更新Magpie配置.cmd`**（推荐，不用记命令）
-- 或运行：`node scripts/sync.mjs apply`
+1. 启动时把本机配置与飞书云端配置按配置项合并成 C；
+2. 有新增或改动时，C 升版并上传到飞书；
+3. 本机写入 C，另一台电脑下次打开 Magpie 也会自动拉到 C。
 
-完成后会提示"配置已同步"，**重启 Magpie** 即可生效。
+需要手动确认时：
+
+- `node scripts/sync.mjs merge`：立即合并一次（与启动自动同步相同）
+- `node scripts/sync.mjs version`：查看当前版本和云端版本
 
 ---
 
@@ -35,15 +39,16 @@
 
 - 按路径展开叶子值；原子写（临时文件 + rename）；写前备份最多 5 份。
 - 快照条目含 `value`、`updatedAt`、`deviceId`、`deviceName`。
-- 基线哈希在 `state.json`；本地未变取远端，远端未变留本地，双方变化按 `conflictPolicy`。
-- 首次接触某路径取远端；冲突写入 `conflicts.json`。
+- 基线哈希在 `state.json`：本地未变取远端，远端未变留本地，双方都变按 `newer-wins`。
+- 首次接触某路径不再整份覆盖远端，而是按 `updatedAt` 合并；A1 与 B1 会合成 C。
+- 冲突写入 `conflicts.json`；同一项两边都改过时按最后修改时间取较新值。
 - 非版本后端策略：`newer-wins`（默认）、`prefer-local`、`prefer-remote`、`manual`。
-- `lark`（飞书）后端策略：`higher-version-wins` —— 快照带全局 `version`，谁改配置谁 +1，打开时版本高的整份胜出。
+- `lark`（飞书）后端：启动时执行 `merge`，按路径做三向合并，只有合并结果变化时才全局版本 +1。
 
 ## 后端与触发
 
 后端：`folder`（`.lock` 互斥）、`git`（fetch/commit/push，非快进重合并重试）、`http`（Bearer + ETag）、`feishu`（飞书云空间 JSON 文件，tenant_access_token）、`lark`（本机飞书 CLI，免密钥，版本号同步）。
-触发：SessionStart 拉取；Stop/SessionEnd 推送（15 秒防抖）；CLI `pull|push|sync|status|doctor|init|lark-init|version|update|export|import`。Hook 失败不阻塞会话，仅写 `hook.log`。
+触发：Magpie 启动时的 `config` hook 后台执行 `merge`（不再依赖桌面脚本）；CLI `merge|apply|pull|push|sync|status|doctor|init|lark-init|version|update|export|import`。Hook 失败不阻塞启动，仅写 `launch-sync.log`。
 
 ## 飞书自动同步（推荐，无需建应用/密钥）
 
@@ -65,9 +70,9 @@ node "D:\magpie-plugins\magpie-settings-sync\scripts\sync.mjs" pull
 ```
 
 之后每台电脑：
-- 打开 Magpie 自动 pull：远端版本更高就采用远端（版本高者胜）
-- 关闭 Magpie 自动 push：本地配置有变化才升版本上传（+1）
-- 手动：`sync` / `pull` / `push`；`version` 查版本号；`update` 手动检查并更新
+- 打开 Magpie 自动 `merge`：本机与云端按配置项合并成 C，有变化才升版上传（+1）
+- A 电脑改了、B 电脑改了，下一次打开各自都会收敛到同一份 C
+- 手动：`merge` / `version`；旧命令 `apply` 仍保留为“只拉不传”
 
 ```powershell
 node "D:\magpie-plugins\magpie-settings-sync\scripts\sync.mjs" version
